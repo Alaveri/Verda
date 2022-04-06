@@ -2055,7 +2055,7 @@ end;
 
 procedure TDesktop.GetClientRect(var rect: TRect);
 begin
-  rect.Create(0, 0, Txt^.Mode.Width, Txt^.Mode.Height);
+  rect.Create(0, 0, TextDriver^.Mode.Width, TextDriver^.Mode.Height);
 end;
 
 function TDesktop.FindNextControl(control: PControl): PControl;
@@ -2163,8 +2163,8 @@ begin
   TypeName := 'TImage';
   Drawbackground := false;
   BorderStyle := bsNone;
-  ForeColor := White;
-  BackColor := Black;
+  {ForeColor := White;
+  BackColor := Black;}
   Data := nil;
 end;
 
