@@ -51,7 +51,9 @@ type
   TBorderStyles = set of TBorderStyle;
   PControl = ^TControl;
   PControlList = ^TControlList;
+  PStatusBar = ^TStatusBar;
   PDesktop = ^TDesktop;
+  PButton = ^TButton;
   PMouseEvent = ^TMouseEvent;
   TMouseEvent = procedure(sender: PControl; var state: TMouseState);
   PKeyboardEvent = ^TKeyboardEvent;
@@ -120,24 +122,25 @@ type
     procedure DrawControls; virtual;
     procedure ProcessMouse(var state, oldState: TMouseState; var handled: boolean); virtual;
     procedure ProcessKeyPress(var key: word; var handled: boolean); virtual;
-    {procedure MouseMove(var state: TMouseState); virtual;
+    procedure SetupControls; virtual;
+    procedure MouseMove(var state: TMouseState); virtual;
     procedure MouseUp(var state: TMouseState); virtual;
     procedure MouseDown(var state: TMouseState); virtual;
     procedure MouseClick(var state: TMouseState); virtual;
     procedure MouseEnter(var state: TMouseState); virtual;
     procedure MouseLeave(var state: TMouseState); virtual;
-    procedure KeyPress(var key: word; var handled: boolean); virtual;
+    procedure Focus; virtual;
+    procedure Unfocus; virtual;
+    {procedure KeyPress(var key: word; var handled: boolean); virtual;
     procedure SetupControls; virtual;
     procedure SetXY(newX, newY: byte); virtual;
     procedure Focus; virtual;
     procedure Unfocus; virtual;
-    procedure FocusFirst(var handled: boolean); virtual;
-    procedure SetFont(newFont: PFont); virtual;
+    procedure FocusFirst(var handled: boolean); virtual;}
     function GetStatusBar: PStatusBar; virtual;
     function GetVisible: boolean; virtual;
     function GetEnabled: boolean; virtual;
     function GetModal: boolean; virtual;
-    function Font: PFont; virtual;}
   end;
   TControlList = Object(TObjectList)
     function ToString: string; virtual;
@@ -147,11 +150,41 @@ type
     procedure Init; virtual;
     procedure Insert(index: integer; item: PControl);
   end;
+  PButtonList = ^TButtonList;
+  TButtonList = Object(TObjectList)
+    function ToString: string; virtual;
+    function GetItem(index: integer): PButton;
+    function IndexOf(item: PButton): integer;
+    function Add(item: PButton): integer;
+    procedure Init; virtual;
+    procedure Insert(index: integer; item: PButton);
+  end;
   PPanel = ^TPanel;
   TPanel = Object(TControl)
   public
     HighlightColor: byte;
     ShadowColor: byte;
+    procedure Init; virtual;
+    procedure Draw; virtual;
+  end;
+  TButton = Object(TPanel)
+    Text: string;
+    TextAlign: TTextAlign;
+    VertAlign: TVertAlign;
+    Pressed: boolean;
+    Toggle: boolean;
+    Active: boolean;
+    PressedBackColor: byte;
+    PressedForeColor: byte;
+    HotKeyColor: byte;
+    HotKey: word;
+    Margin: integer;
+    constructor CreateText(newId, newText: string; newParent: PControl);
+    function  TrueText(txt: string): string;
+    procedure MouseEnter(var state: TMouseState); virtual;
+    procedure MouseLeave(var state: TMouseState); virtual;
+    procedure MouseDown(var state: TMouseState); virtual;
+    procedure MouseClick(var state: TMouseState); virtual;
     procedure Init; virtual;
     procedure Draw; virtual;
   end;
@@ -169,7 +202,9 @@ type
     procedure Hide; virtual;}
   end;
   PMenu = ^TMenu;
-  {PMenuItem = ^TMenuItem;}
+  PMenuItem = ^TMenuItem;
+  TMenuItem = object
+  end;
   TMenu = object(TPopUp)
   private
   public
@@ -194,7 +229,6 @@ type
     function ProcessHotKeys(control: PControl; key: word): boolean; virtual;
     function ProcessArrowKeys(key: word): boolean; virtual;}
   end;
-  PStatusBar = ^TStatusBar;
   TStatusBar = object(TPanel)
   private
   public
@@ -206,19 +240,55 @@ type
     procedure SetupControls; virtual;}
   end;
   TDesktop = object(TPanel)
+  private
+  public
     MenuBar: PMenuBar;
     StatusBar: PStatusBar;
     MouseOverControl: PControl;
     ActiveControl: PControl;
     ActiveMenu: PMenu;
+    MouseState: TMouseState;
+    OldMouseState: TMouseState;
+    MouseStack: TStack;
     procedure Init; virtual;
     procedure Draw; virtual;
     procedure GetClientRect(var rect: TRect); virtual;
     procedure KeyPress(var key: word; var handled: boolean); virtual;
+    procedure PushMouseState; virtual;
+    procedure PopMouseState; virtual;
+    destructor Done; virtual;
     function FindNextControl(control: PControl): PControl; virtual;
     function FindPreviousControl(control: PControl): PControl; virtual;
   end;
 
+var
+  icDesktop: byte;
+  icDesktopBack: byte;
+  icWindow: byte;
+  icWindowBack: byte;
+  icBorder: byte;
+  icButton: byte;
+  icButtonBack: byte;
+  icButtonDown: byte;
+  icButtonDownBack: byte;
+  icButtonHotKey: byte;
+  icButtonShadow: byte;
+  icButtonHighLight: byte;
+  icWindowTitle: byte;
+  icWindowTitleBack: byte;
+  icMenu: byte;
+  icMenuBack: byte;
+  icHotKey: byte;
+  icScroll: byte;
+  icScrollBack: byte;
+  icEditor: byte;
+  icEditorBack: byte;
+  icDialog: byte;
+  icDialogBack: byte;
+  icSelect: byte;
+  icSelectBack: byte;
+  icFocused: byte;
+  icFocusedBack: byte;
 
 implementation
 
@@ -316,6 +386,60 @@ begin
   AcceptTab := false;
   DrawEnabled := true;
   Manipulating := false;
+end;
+
+procedure TControl.MouseMove(var state: TMouseState);
+begin
+end;
+
+procedure TControl.MouseUp(var state: TMouseState);
+begin
+end;
+
+procedure TControl.MouseDown(var state: TMouseState);
+begin
+end;
+
+procedure TControl.MouseClick(var state: TMouseState);
+begin
+end;
+
+procedure TControl.MouseEnter(var state: TMouseState);
+begin
+end;
+
+procedure TControl.MouseLeave(var state: TMouseState);
+begin
+end;
+
+procedure TControl.Focus;
+var
+  desktop: PDesktop;
+begin
+  desktop := GetDesktop;
+  if not (CanFocus and GetVisible and GetEnabled) then
+    exit;
+  Focused := true;
+  desktop^.ActiveControl := @self;
+  TextDriver.CursorOff;
+  Draw;
+  TextDriver.SetXY(TextX, TextY);
+  if (UsesCursor) then
+    TextDriver.CursorOn;
+end;
+
+procedure TControl.Unfocus;
+var
+  desktop: PDesktop;
+begin
+  desktop := GetDesktop;
+  if (not CanFocus) or (not Focused) then exit;
+  Focused := false;
+  TextDriver.CursorOff;
+  HideMouse;
+  Draw;
+  ShowMouse;
+  desktop^.ActiveControl := nil;
 end;
 
 procedure TControl.GetBounds(var rect: TRect);
@@ -418,6 +542,9 @@ begin
   until (par = nil);
 end;
 
+procedure TControl.SetupControls;
+begin
+end;
 
 destructor TControl.Done;
 var
@@ -450,6 +577,57 @@ begin
     par := par^.Parent;
   end;
   GetDesktop := PDesktop(par);
+end;
+
+function TControl.GetStatusBar: PStatusBar;
+begin
+  GetStatusBar := GetDesktop^.StatusBar;
+end;
+
+function TControl.GetVisible: boolean;
+var
+  par: PControl;
+begin
+  GetVisible := false;
+  if (not Visible) then exit;
+  par := Parent;
+  while (par <> nil) do
+  begin
+    if (not par^.Visible) then exit;
+    par := par^.Parent;
+  end;
+  GetVisible := true;
+end;
+
+function TControl.GetEnabled: boolean;
+var
+  par: PControl;
+begin
+  GetEnabled := false;
+  if (not Enabled) then exit;
+  par := Parent;
+  while (par <> nil) do
+  begin
+    if (not par^.Enabled) then exit;
+    par := par^.Parent;
+  end;
+  GetEnabled := true;
+end;
+
+function TControl.GetModal: boolean;
+var
+  par: PControl;
+begin
+  GetModal := true;
+  if (Modal) then
+    exit;
+  par := Parent;
+  while (par <> nil) do
+  begin
+    if (par^.Modal) then exit;
+    par := par^.Parent;
+  end;
+  GetModal := false;
 end;
 
 procedure TControl.Hide;
@@ -503,69 +681,252 @@ procedure TPanel.Init;
 begin
   TControl.Init;
   TypeName := 'TPanel';
-  {ForeColor := icWindow;
+  ForeColor := icWindow;
   BackColor := icWindowBack;
   BorderColor := icBorder;
   BorderStyle := bsSingle;
   HighlightColor := icButtonHighlight;
-  ShadowColor := icButtonShadow;
   FocusedForeColor := icFocusedBack;
   FocusedBackColor := icFocused;
-  DrawBackground := true;}
+  DrawBackground := true;
 end;
 
 procedure TPanel.Draw;
 var
   rect: TRect;
+  lineStyle: TLineStyle;
+  desktop: PDesktop;
 begin
- { if not GetVisible then exit;
+  if not GetVisible then exit;
+  desktop := GetDesktop;
   TextDriver.PushState;
+  desktop^.PushMouseState;
   GetClipRect(rect);
-  Graphics.SetForeColor(BackColor);
+  if (Focused and GetEnabled) then begin
+    TextDriver.SetForeColor(BorderColor);
+    TextDriver.SetForeColor(FocusedBackColor);
+  end
+  else begin
+    TextDriver.SetForeColor(BorderColor);
+    TextDriver.SetBackColor(BackColor);
+  end;
   if (DrawBackground) then
-    Graphics.FillRect(rect);
-  case BorderStyle of
-    bsRaised:
+    TextDriver.FillRect(rect);
+  if (BorderStyle <> bsNone) then begin
+    lineStyle := lsSingle;
+    if (BorderStyle = bsDouble) then lineStyle := lsDouble;
+    TextDriver.Box(rect, lineStyle);
+  end;
+  TextDriver.PopState;
+  GetDesktop^.PopMouseState;
+  DrawControls;
+end;
+
+constructor TButton.CreateText(newId, newText: string; newParent: PControl);
+begin
+  SetParent(newParent);
+  Id := newId;
+  Enabled := true;
+  OnMouseClick := nil;
+  Text := newText;
+  Init;
+end;
+
+procedure TButton.Init;
+begin
+  TPanel.Init;
+  TypeName := 'TButton';
+  ToolTip := '';
+  CanFocus := true;
+  Active := false;
+  IsMouseOver := false;
+  ForeColor := icButton;
+  BackColor := icButtonBack;
+  HotKeyColor := icButtonHotKey;
+  BorderStyle := bsNone;
+  TextAlign := taCenter;
+  VertAlign := vaCenter;
+  Margin := 0;
+  Pressed := false;
+  Toggle := false;
+  Grouped := false;
+  PressedBackColor := icButtonDownBack;
+  PressedForeColor := icButtonDown;
+end;
+
+function TButton.TrueText(txt: string): string;
+var
+  index: integer;
+  textIndex: integer;
+  result: string;
+begin
+  result := '';
+  for index := 1 to Length(txt) do
+  begin
+    if (txt[index] <> '&') then result := result + txt[index];
+  end;
+  TrueText := result;
+end;
+
+function TButtonList.ToString: string;
+begin
+  ToString := TypeName;
+end;
+
+function TButtonList.GetItem(index: integer): PButton;
+begin
+  GetItem := pointer(TObjectList.GetItem(index));
+end;
+
+function TButtonList.IndexOf(item: PButton): integer;
+begin
+  IndexOf := TObjectList.IndexOf(item);
+end;
+
+function TButtonList.Add(item: PButton): integer;
+begin
+  Add := TObjectList.Add(item);
+end;
+
+procedure TButtonList.Init;
+begin
+  TObjectList.Init;
+  TypeName := 'TButtonList';
+end;
+
+procedure TButtonList.Insert(index: integer; item: PButton);
+begin
+  TObjectList.Insert(index, item);
+end;
+
+procedure TButton.Draw;
+var
+  textXPos, textYPos: byte;
+  clipRect: TRect;
+  index: integer;
+  isHotKey: boolean;
+  textIndex: integer;
+  ch: char;
+  txt: string;
+begin
+  if not GetVisible then exit;
+  TextDriver.PushState;
+  GetDesktop^.PushMouseState;
+  txt := TrueText(Text);
+  HideMouse;
+  TextDriver.PushState;
+  if (Pressed or Active) then
+  begin
+    TextDriver.SetForeColor(PressedForeColor);
+    TextDriver.SetBackColor(PressedBackColor);
+  end
+  else if (Focused) then
+  begin
+    TextDriver.SetForeColor(FocusedForeColor);
+    TextDriver.SetBackColor(FocusedBackColor);
+  end
+  else
+  begin
+    TextDriver.SetForeColor(ForeColor);
+    TextDriver.SetBackColor(BackColor);
+  end;
+  TPanel.Draw;
+  GetClipRect(clipRect);
+  case TextAlign of
+    taLeft: textXPos := clipRect.X;
+    taRight: textXPos := clipRect.X + clipRect.Width - Length(txt);
+    taCenter: textXPos := clipRect.X + (clipRect.Width - Length(txt) div 2);
+  end;
+  case VertAlign of
+    vaTop: textYPos := clipRect.Y;
+    vaBottom: textYPos := clipRect.Height - 1;
+    vaCenter: textYPos := (clipRect.Height) div 2;
+  end;
+  index := 1;
+  textIndex := 1;
+  isHotKey := false;
+  while textIndex <= Length(Text) do
+  begin
+    if (Text[index] = '&') then
     begin
-      Graphics.SetForeColor(shadowColor);
-      Graphics.Line(rect.Right, rect.Y, rect.Right, rect.Bottom);
-      Graphics.Line(rect.X, rect.Bottom, rect.Right, rect.Bottom);
-      Graphics.SetForeColor(HighlightColor);
-      Graphics.Line(rect.X, rect.Y, rect.Right, rect.Y);
-      Graphics.Line(rect.X, rect.Y, rect.X, rect.Bottom);
+      isHotKey := true;
+      Inc(textIndex);
     end;
-    bsLowered:
+    if (isHotKey) then
     begin
-      Graphics.SetForeColor(HighlightColor);
-      Graphics.Line(rect.Right, rect.Y, rect.Right, rect.Bottom);
-      Graphics.Line(rect.X, rect.Bottom, rect.Right, rect.Bottom);
-      Graphics.SetForeColor(ShadowColor);
-      Graphics.Line(rect.X, rect.Y, rect.Right, rect.Y);
-      Graphics.Line(rect.X, rect.Y, rect.X, rect.Bottom);
-    end;
-    bsSingle:
+      isHotKey := false;
+      TextDriver.SetForeColor(HotKeyColor);
+    end
+    else
+      TextDriver.SetForeColor(ForeColor);
+    ch := Text[textIndex];
+    TextDriver.SetXY(index + textXPos + Margin, textYPos);
+    TextDriver.Write(ch);
+    Inc(index);
+    Inc(textIndex);
+  end;
+  TextDriver.PopState;
+  GetDesktop^.PopMouseState;
+end;
+
+procedure TButton.MouseEnter(var state: TMouseState);
+begin
+  if not (Enabled and Visible) then exit;
+  GetStatusBar^.Text := ToolTip;
+  if (state.ButtonState = [bsLeft]) then Pressed := true;
+  Draw;
+  GetStatusBar^.Draw;
+end;
+
+procedure TButton.MouseLeave(var state: TMouseState);
+begin
+  if not (Enabled and Visible) then exit;
+  GetStatusBar^.Text := '';
+  if (state.ButtonState = [bsLeft]) then Pressed := false;
+  Draw;
+  GetStatusBar^.Draw;
+end;
+
+procedure TButton.MouseDown(var state: TMouseState);
+var
+  index: word;
+  control: PControl;
+  button: PButton;
+begin
+  if not (GetVisible and GetEnabled) then exit;
+  if CanFocus then
+    Focus;
+  if Toggle and Grouped and (Parent <> nil) then
+  begin
+    for index := 0 to Parent^.Controls^.Count - 1 do
     begin
-      Graphics.SetForeColor(BorderColor);
-      Graphics.Rectangle(rect.X, rect.Y, rect.Right, rect.Bottom);
-    end;
-    bsDouble:
-    begin
-      Graphics.SetForeColor(BorderColor);
-      Graphics.Rectangle(rect.X, rect.Y, rect.Right, rect.Bottom);
-      Graphics.SetForeColor(BorderColor);
-      Graphics.Rectangle(rect.X + 1, rect.Y + 1, rect.Right - 1, rect.Bottom - 1);
+      control := Parent^.Controls^.GetItem(index);
+      if (control^.Grouped) then
+      begin
+        button := pointer(control);
+        button^.Pressed := false;
+        HideMouse;
+        control^.Draw;
+        ShowMouse;
+      end;
     end;
   end;
-  if (Focused and GetEnabled) then
+  Pressed := true;
+  HideMouse;
+  Draw;
+  ShowMouse;
+end;
+
+procedure TButton.MouseClick(var state: TMouseState);
+begin
+  if (not Toggle) then
   begin
-    rect.Create(MaxL(rect.X - 2, 0), MaxL(rect.Y - 2, 0),
-      MinL(rect.Right + 2, Graphics.Mode^.Width), MinL(rect.Bottom + 2, Graphics.Mode^.Height));
-    Graphics.SetForeColor(FocusedForeColor);
-    Graphics.Rectangle(rect.X - 1, rect.Y - 1, rect.Right + 1, rect.Bottom + 1);
-    Graphics.Rectangle(rect.X - 2, rect.Y - 2, rect.Right + 2, rect.Bottom + 2);
-  end;}
-  TextDriver.PopState;
-  {DrawControls};
+    Pressed := false;
+    HideMouse;
+    Draw;
+    ShowMouse;
+  end;
+  TPanel.MouseClick(state);
 end;
 
 procedure TDesktop.Init;
@@ -576,11 +937,38 @@ begin
   BorderStyle := bsNone;
   ActiveControl := nil;
   ActiveMenu := nil;
-  {MouseOverControl := nil;
+  MouseOverControl := nil;
   ForeColor := icDesktop;
   BackColor := icDesktopBack;
   MenuBar := New(PMenuBar, CreateParent('DesktopMenuBar', @self));
-  StatusBar := New(PStatusBar, CreateParent('DesktopStatusBar', @self));}
+  StatusBar := New(PStatusBar, CreateParent('DesktopStatusBar', @self));
+  MouseState.Create('');
+  OldMouseState.Create('');
+  MouseStack.Create('MouseStack');
+end;
+
+destructor TDesktop.Done;
+begin
+  MouseStack.Done;
+end;
+
+procedure TDesktop.PushMouseState;
+var
+  state: PMouseState;
+begin
+  state := New(PMouseState, Create(''));
+  state^.Assign(MouseState);
+  MouseStack.Push(state);
+end;
+
+procedure TDesktop.PopMouseState;
+var
+  state: PMouseState;
+begin
+  state := PMouseState(MouseStack.Pop);
+  if (state = nil) then exit;
+  MouseState.Assign(state^);
+  Dispose(state, Done);
 end;
 
 procedure TDesktop.Draw;

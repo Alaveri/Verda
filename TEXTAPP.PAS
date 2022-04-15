@@ -20,15 +20,12 @@ type
   PTextApplication = ^TTextApplication;
   TTextApplication = object(TApplication)
   private
-    _oldMouseState: TMouseState;
     _mouseHandled: boolean;
     _keyHandled: boolean;
-    _mouseVisible: boolean;
-    _mouseX: integer;
-    _mouseY: integer;
   public
     Desktop: PDesktop;
     procedure InitTextDriver(driver: TTextDrivers; modeId: string);
+    procedure InitDefaultColors; virtual;
     procedure ProcessEvents; virtual;
     procedure Init; virtual;
     procedure Run; virtual;
@@ -37,6 +34,34 @@ type
   end;
 
 implementation
+
+procedure TTextApplication.InitDefaultColors;
+begin
+  icDesktop := White;
+  icDesktopBack := Green;
+  icWindow := LightCyan;
+  icWindowBack := Black;
+  icBorder := LightCyan;
+  icButton := Black;
+  icButtonBack := Cyan;
+  icButtonDown := White;
+  icButtonDownBack := Green;
+  icButtonHotKey := LightRed;
+  icWindowTitle := Black;
+  icWindowTitleBack := Cyan;
+  icMenu := Black;
+  icMenuBack := LightGray;
+  icHotKey := LightRed;
+  icScroll := Black;
+  icScrollBack := Cyan;
+  icEditor := Yellow;
+  icEditorBack := Black;
+  icDialog := Black;
+  icDialogBack := Cyan;
+  icSelect := White;
+  icSelectBack := Green;
+  icFocused := Green;
+end;
 
 procedure TTextApplication.Init;
 var
@@ -47,10 +72,8 @@ begin
   _mouseHandled := false;
   _keyHandled := false;
   Desktop := New(PDesktop, CreateParent('Desktop', nil));
-  _mouseVisible := true;
-  _mouseX := 0;
-  _mouseY := 0;
-  FillChar(_oldMouseState, SizeOf(TMouseState), 0);
+  Desktop^.MouseState.Visible := true;
+  Desktop^.MouseStack.Create('MouseStack');
 end;
 
 procedure TTextApplication.InitTextDriver(driver: TTextDrivers; modeId: string);
@@ -68,6 +91,7 @@ begin
   end;
   mode := TextDriver.Modes.GetItem(modeIndex);
   TextDriver.SetMode(mode^);
+  InitDefaultColors;
 end;
 
 procedure TTextApplication.ProcessEvents;
@@ -77,12 +101,12 @@ var
   rect: TRect;
 begin
   GetMouseState(mouseState);
-  _mouseX := mouseState.X;
-  _mouseY := mouseState.Y;
-  if not Equal(mouseState, _oldMouseState, SizeOf(TMouseState)) then
+  Desktop^.MouseState.X := mouseState.X;
+  Desktop^.MouseState.Y := mouseState.Y;
+  if Desktop^.MouseState.Moved(Desktop^.OldMouseState) then
   begin
-    Desktop^.ProcessMouse(mouseState, _oldMouseState, _mouseHandled);
-    _oldMouseState := mouseState;
+    Desktop^.ProcessMouse(mouseState, Desktop^.OldMouseState, _mouseHandled);
+    Desktop^.OldMouseState := mouseState;
   end;
   if (KeyPressed) then
   begin
@@ -96,9 +120,9 @@ var
   mouseState: TMouseState;
 begin
   GetMouseState(mouseState);
-  _oldMouseState := mouseState;
-  _mouseX := mouseState.X;
-  _mouseY := mouseState.Y;
+  Desktop^.OldMouseState := mouseState;
+  Desktop^.MouseState.X := mouseState.X;
+  Desktop^.MouseState.Y := mouseState.Y;
   TApplication.Run;
 end;
 
