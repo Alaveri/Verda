@@ -24,8 +24,10 @@ type
     _keyHandled: boolean;
   public
     Desktop: PDesktop;
+    MenuBar: PMenuBar;
     procedure InitTextDriver(driver: TTextDrivers; modeId: string);
     procedure InitDefaultColors; virtual;
+    procedure InitControls;
     procedure ProcessEvents; virtual;
     procedure Init; virtual;
     procedure Run; virtual;
@@ -63,6 +65,16 @@ begin
   icFocused := Green;
 end;
 
+procedure TTextApplication.InitControls;
+begin
+  with Desktop^ do begin
+    SetBounds(0, 0, TextDriver.Mode.Width, TextDriver.Mode.Height);
+    ForeColor := icDesktop;
+    BackColor := icDesktopBack;
+    SetupControls;
+  end;
+end;
+
 procedure TTextApplication.Init;
 var
   mouseState: TMouseState;
@@ -74,6 +86,7 @@ begin
   Desktop := New(PDesktop, CreateParent('Desktop', nil));
   Desktop^.MouseState.Visible := true;
   Desktop^.MouseStack.Create('MouseStack');
+  InitControls;
 end;
 
 procedure TTextApplication.InitTextDriver(driver: TTextDrivers; modeId: string);
@@ -100,7 +113,7 @@ var
   mouseState: TMouseState;
   rect: TRect;
 begin
-  GetMouseState(mouseState);
+  MouseDriver.GetMouseState(mouseState);
   Desktop^.MouseState.X := mouseState.X;
   Desktop^.MouseState.Y := mouseState.Y;
   if Desktop^.MouseState.Moved(Desktop^.OldMouseState) then
@@ -119,7 +132,7 @@ procedure TTextApplication.Run;
 var
   mouseState: TMouseState;
 begin
-  GetMouseState(mouseState);
+  MouseDriver.GetMouseState(mouseState);
   Desktop^.OldMouseState := mouseState;
   Desktop^.MouseState.X := mouseState.X;
   Desktop^.MouseState.Y := mouseState.Y;
