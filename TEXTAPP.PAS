@@ -13,15 +13,36 @@ uses
   TextIni,
   Drawing,
   MouseDrv,
+  GraphDrv,
   KeyDrv,
   Utils;
 
 type
+  TMouseCursorImage = array[0..12, 0..9] of byte;
+  PMouseCursor = ^TMouseCursor;
+  TMouseCursor = object(TBaseObject)
+  private
+    _image: TMouseCursorImage;
+    _width, _height: word;
+    _visible: boolean;
+    _x, _y: integer;
+  public
+    BackData: PByte;
+    procedure Draw; virtual;
+    procedure Init; virtual;
+    destructor Done; virtual;
+    function Width: integer; virtual;
+    function Height: integer; virtual;
+    procedure StoreBackground(var mouseState: TMouseState); virtual;
+  end;
   PTextApplication = ^TTextApplication;
   TTextApplication = object(TApplication)
   private
+    _oldMouseState: TMouseState;
     _mouseHandled: boolean;
     _keyHandled: boolean;
+    _mouseCursor: TMouseCursor;
+    _mouseVisible: boolean;
   public
     Desktop: PDesktop;
     MenuBar: PMenuBar;
@@ -33,17 +54,38 @@ type
     procedure Run; virtual;
     procedure MainLoop; virtual;
     destructor Done; virtual;
+    procedure ShowMouseCursor; virtual;
+    procedure HideMouseCursor; virtual;
   end;
 
 implementation
 
+const
+  DefaultMouseCursor: TMouseCursorImage =
+  (
+    ($27, $01, $01, $01, $01, $01, $01, $01, $01, $01),
+    ($27, $27, $01, $01, $01, $01, $01, $01, $01, $01),
+    ($27, $00, $27, $01, $01, $01, $01, $01, $01, $01),
+    ($27, $00, $00, $27, $01, $01, $01, $01, $01, $01),
+    ($27, $00, $00, $00, $27, $01, $01, $01, $01, $01),
+    ($27, $00, $00, $00, $00, $27, $01, $01, $01, $01),
+    ($27, $00, $00, $00, $00, $00, $27, $01, $01, $01),
+    ($27, $00, $00, $00, $00, $00, $00, $27, $01, $01),
+    ($27, $00, $00, $00, $00, $00, $00, $00, $27, $01),
+    ($27, $00, $00, $27, $27, $27, $27, $27, $27, $27),
+    ($27, $00, $27, $01, $01, $01, $01, $01, $01, $01),
+    ($27, $27, $01, $01, $01, $01, $01, $01, $01, $01),
+    ($27, $01, $01, $01, $01, $01, $01, $01, $01, $01)
+  );
+
 procedure TTextApplication.InitDefaultColors;
 begin
+  TextDriver.BppMode := 4;
   icDesktop := White;
-  icDesktopBack := Green;
+  icDesktopBack := LightGreen;
   icWindow := LightCyan;
   icWindowBack := Black;
-  icBorder := LightCyan;
+  icBorder := Black;
   icButton := Black;
   icButtonBack := Cyan;
   icButtonDown := White;
@@ -52,7 +94,7 @@ begin
   icWindowTitle := Black;
   icWindowTitleBack := Cyan;
   icMenu := Black;
-  icMenuBack := LightGray;
+  icMenuBack := White;
   icHotKey := LightRed;
   icScroll := Black;
   icScrollBack := Cyan;
@@ -85,7 +127,9 @@ begin
   _keyHandled := false;
   Desktop := New(PDesktop, CreateParent('Desktop', nil));
   Desktop^.MouseState.Visible := true;
-  Desktop^.MouseStack.Create('MouseStack');
+  Desktop^.MouseStack.Create;
+  _mouseCursor.Create;
+  _mouseVisible := true;
   InitControls;
 end;
 
@@ -114,17 +158,21 @@ var
   rect: TRect;
 begin
   MouseDriver.GetMouseState(mouseState);
-  Desktop^.MouseState.X := mouseState.X;
-  Desktop^.MouseState.Y := mouseState.Y;
-  if Desktop^.MouseState.Moved(Desktop^.OldMouseState) then
+  _mouseCursor._X := mouseState.X;
+  _mouseCursor._Y := mouseState.Y;
+  if not mouseState.Equals(_oldMouseState) then
   begin
-    Desktop^.ProcessMouse(mouseState, Desktop^.OldMouseState, _mouseHandled);
-    Desktop^.OldMouseState := mouseState;
-  end;
-  if (KeyPressed) then
-  begin
-    ch := ReadKey;
-    if (ch = #27) then Close;
+    Graphics.PushState;
+    Graphics.SetBackColor(Desktop^.BackColor);
+    if (_mouseCursor.BackData <> nil) then begin
+      Graphics.DrawImage(_oldMouseState.X, _oldMouseState.Y,
+        _mouseCursor.Width, _mouseCursor.Height, _mouseCursor.BackData);
+    end;
+    _oldMouseState.Assign(mouseState);
+    Desktop^.ProcessMouse(mouseState, _oldMouseState, _mouseHandled);
+    _mouseCursor.StoreBackground(mouseState);
+    _mouseCursor.Draw;
+    Graphics.PopState;
   end;
 end;
 
@@ -133,9 +181,12 @@ var
   mouseState: TMouseState;
 begin
   MouseDriver.GetMouseState(mouseState);
-  Desktop^.OldMouseState := mouseState;
-  Desktop^.MouseState.X := mouseState.X;
-  Desktop^.MouseState.Y := mouseState.Y;
+  _oldMouseState.Create;
+  _oldMouseState.Assign(mouseState);
+  _mouseCursor._X := mouseState.X;
+  _mouseCursor._Y := mouseState.Y;
+  _mouseCursor.StoreBackground(mouseState);
+  _mouseCursor.Draw;
   TApplication.Run;
 end;
 
@@ -146,11 +197,76 @@ begin
   TApplication.MainLoop;
 end;
 
+procedure TTextApplication.ShowMouseCursor;
+var
+  mouseState: TMouseState;
+begin
+  MouseDriver.GetMouseState(mouseState);
+  _mouseCursor._Visible := true;
+  _mouseCursor.Draw;
+end;
+
+procedure TTextApplication.HideMouseCursor;
+begin
+  Graphics.DrawImage(_mouseCursor._X, _mouseCursor._Y,
+    _mouseCursor.Width, _mouseCursor.Height, _mouseCursor.BackData);
+  _mouseCursor._visible := false;
+end;
+
 destructor TTextApplication.Done;
 begin
   TApplication.Done;
   Dispose(Desktop, Done);
+  _mouseCursor.Done;
   TextDriver.Done;
+end;
+
+procedure TMouseCursor.Init;
+begin
+  TBaseObject.Init;
+  _width := 10;
+  _height := 13;
+  _visible := true;
+  _y := 0;
+  _x := 0;
+  BackData := nil;
+  _image := DefaultMouseCursor;
+end;
+
+procedure TMouseCursor.Draw;
+var
+  xIndex, yIndex: integer;
+  pixel: PByte;
+  rect, mouseRect, clipRect: TRect;
+  xPos, yPos, startX, startY: integer;
+begin
+  if not _visible then exit;
+  Graphics.DrawImage(_x, _y, _width, _height, @_image);
+end;
+
+procedure TMouseCursor.StoreBackground(var mouseState: TMouseState);
+var
+  rect: TRect;
+begin
+  if (BackData = nil) then GetMem(BackData, Width * Height);
+  rect.Create(mouseState.X, mouseState.Y, Width, Height);
+  Graphics.GetImage(BackData, rect);
+end;
+
+function TMouseCursor.Width: integer;
+begin
+  Width := _width;
+end;
+
+function TMouseCursor.Height: integer;
+begin
+  Height := _height;
+end;
+
+destructor TMouseCursor.Done;
+begin
+  if (BackData <> nil) then
+    FreeMem(BackData, _width * _height);
 end;
 
 end.

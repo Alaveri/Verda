@@ -9,6 +9,7 @@ uses
   Drawing,
   KeyDrv,
   WideStr,
+  GraphDrv,
   Utils,
   TextDrv,
   MouseDrv;
@@ -61,6 +62,7 @@ type
   TKeyboardEvent = procedure(sender: PControl; var key: word; var handled: boolean);
   TControl = Object(TObject)
   private
+    _font: PFont;
   public
     DrawBackground: boolean;
     X, Y: integer;
@@ -119,11 +121,11 @@ type
     procedure GetClientScreenBounds(var rect: TRect); virtual;
     procedure GetClipRect(var rect: TRect); virtual;
     procedure GetClientRect(var rect: TRect); virtual;
-    function GetDesktop: PDesktop; virtual;
     procedure DrawControls; virtual;
     procedure ProcessMouse(var state, oldState: TMouseState; var handled: boolean); virtual;
     procedure ProcessKeyPress(var key: word; var handled: boolean); virtual;
     procedure SetupControls; virtual;
+    procedure SetFont(newFont: PFont); virtual;
     procedure MouseMove(var state: TMouseState); virtual;
     procedure MouseUp(var state: TMouseState); virtual;
     procedure MouseDown(var state: TMouseState); virtual;
@@ -142,6 +144,7 @@ type
     function GetVisible: boolean; virtual;
     function GetEnabled: boolean; virtual;
     function GetModal: boolean; virtual;
+    function GetDesktop: PDesktop; virtual;
   end;
   TControlList = Object(TObjectList)
     function ToString: string; virtual;
@@ -363,7 +366,7 @@ procedure TControl.Init;
 begin
   TObject.Init;
   TypeName := 'TControl';
-  Controls := New(PControlList, Create('~Controls'));
+  Controls := New(PControlList, Create);
   SetBounds(0, 0, 0, 0);
   Visible := true;
   Moving := false;
@@ -401,6 +404,12 @@ begin
   AcceptTab := false;
   DrawEnabled := true;
   Manipulating := false;
+  _font := nil;
+end;
+
+procedure TControl.SetFont(newFont: PFont);
+begin
+  _font := newFont;
 end;
 
 procedure TControl.MouseMove(var state: TMouseState);
@@ -486,8 +495,7 @@ begin
   rect.X := rect.X + X;
   rect.Y := rect.Y + Y;
   par := Parent;
-  while par <> nil do
-  begin
+  while par <> nil do begin
     par^.GetClientRect(parRect);
     rect.X := rect.X + par^.X + parRect.X;
     rect.Y := rect.Y + par^.Y + parRect.Y;
@@ -501,19 +509,16 @@ var
   parRect: TRect;
 begin
   GetBounds(rect);
-  if (Position = spAbsolute) or (Parent = nil) then
-    exit;
+  if (Position = spAbsolute) or (Parent = nil) then exit;
   par := Parent;
   repeat
-    if (par^.Position = spAbsolute) then
-    begin
+    if (par^.Position = spAbsolute) then begin
       par^.GetBounds(parRect);
       rect.X := rect.X + parRect.X;
       rect.Y := rect.Y + parRect.Y;
       break;
     end
-    else
-    begin
+    else begin
       par^.GetClientRect(parRect);
       rect.X := rect.X + parRect.X + par^.X;
       rect.Y := rect.Y + parRect.Y + par^.Y;
@@ -542,15 +547,13 @@ begin
     exit;
   par := Parent;
   repeat
-    if (par^.Position = spAbsolute) then
-    begin
+    if (par^.Position = spAbsolute) then begin
       par^.GetScreenBounds(parRect);
       rect.Intersection(ParRect, result);
       rect := result;
       break;
     end
-    else
-    begin
+    else begin
       par^.GetClientScreenBounds(parRect);
       rect.Intersection(ParRect, result);
       rect := result;
@@ -570,11 +573,14 @@ var
 begin
   if (Controls^.Count > 0) then
   begin
-    for index := 0 to Controls^.Count - 1 do
-    begin
+    for index := 0 to Controls^.Count - 1 do begin
      item := Controls^.GetItem(index);
      Dispose(item, Done);
     end;
+  end;
+  if (_font <> nil) then begin
+    Dispose(_font, Done);
+    _font := nil;
   end;
   TObject.Done;
 end;
@@ -583,14 +589,12 @@ function TControl.GetDesktop: PDesktop;
 var
   par: PControl;
 begin
-  if (Parent = nil) then
-  begin
+  if (Parent = nil) then begin
     GetDesktop := @Self;
     exit;
   end;
   par := Parent;
-  while (par^.Parent <> nil) do
-  begin
+  while (par^.Parent <> nil) do begin
     par := par^.Parent;
   end;
   GetDesktop := PDesktop(par);
@@ -608,8 +612,7 @@ begin
   GetVisible := false;
   if (not Visible) then exit;
   par := Parent;
-  while (par <> nil) do
-  begin
+  while (par <> nil) do begin
     if (not par^.Visible) then exit;
     par := par^.Parent;
   end;
@@ -623,8 +626,7 @@ begin
   GetEnabled := false;
   if (not Enabled) then exit;
   par := Parent;
-  while (par <> nil) do
-  begin
+  while (par <> nil) do begin
     if (not par^.Enabled) then exit;
     par := par^.Parent;
   end;
@@ -639,8 +641,7 @@ begin
   if (Modal) then
     exit;
   par := Parent;
-  while (par <> nil) do
-  begin
+  while (par <> nil) do begin
     if (par^.Modal) then exit;
     par := par^.Parent;
   end;
@@ -654,8 +655,7 @@ var
   desktop: PDesktop;
 begin
   desktop := GetDesktop;
-  for index := 0 to Controls^.Count - 1 do
-  begin
+  for index := 0 to Controls^.Count - 1 do begin
     control := Controls^.GetItem(index);
     control^.IsMouseOver := false;
     control^.IsLeftMouseDown := false;
@@ -685,15 +685,169 @@ var
 begin
   if (not Enabled) then exit;
   if (Controls^.Count = 0) then exit;
-  for index := Controls^.Count - 1 downto 0 do
-  begin
+  for index := Controls^.Count - 1 downto 0 do begin
     control := Controls^.GetItem(Index);
     control^.Draw;
   end;
 end;
 
 procedure TControl.ProcessMouse(var state, oldState: TMouseState; var handled: boolean);
+var
+  Index: word;
+  rect: TRect;
+  clientRect: TRect;
+  intersects: boolean;
+  newState: TMouseState;
+  desktop: PDesktop;
+  control: PControl;
 begin
+  if not (GetVisible and GetEnabled) then Exit;
+
+  GetClipRect(rect);
+  intersects := rect.IntersectPoint(state.X, state.Y);
+  desktop := GetDesktop;
+
+  if Controls^.Count > 0 then
+  begin
+    for index := 0 to Controls^.Count - 1 do
+    begin
+      control := Controls^.GetItem(index);
+      control^.ProcessMouse(state, oldState, handled);
+    end;
+  end;
+
+  if (oldState.X <> state.X) or (oldState.Y <> state.Y) then
+  begin
+    if IsMouseOver and (not intersects) then
+    begin
+      MouseLeave(state);
+      if (OnMouseLeave <> nil) then
+        TMouseEvent(OnMouseLeave)(@self, state);
+      IsMouseOver := false;
+      desktop^.MouseOverControl := nil;
+    end;
+    if (intersects and (not handled)) or Moving or Manipulating then
+    begin
+      newState := state;
+      Dec(newState.X, rect.X);
+      Dec(newState.Y, rect.Y);
+      if (not IsMouseOver) then
+      begin
+        if (desktop^.MouseOverControl <> nil)
+          and (desktop^.MouseOverControl <> @Self)
+          then
+          desktop^.MouseOverControl^.MouseLeave(state);
+        desktop^.MouseOverControl := @self;
+        MouseEnter(state);
+        if (OnMouseEnter <> nil) then
+          TMouseEvent(OnMouseEnter)(@self, state);
+        IsMouseOver := true;
+      end;
+      OldState := state;
+      IsLeftMouseDown := (bsLeft in state.ButtonState);
+      IsRightMouseDown := (bsRight in state.ButtonState);
+      MouseMove(newState);
+      if (OnMouseMove <> nil) then
+        TMouseEvent(OnMouseMove)(@self, newState);
+      handled := true;
+    end;
+  end;
+
+  if handled then exit;
+
+  if (bsLeft in state.ButtonState) and (not (bsLeft in oldState.ButtonState)) then
+  begin
+    if (Desktop^.ActiveMenu <> nil) then
+    begin
+      Desktop^.ActiveMenu^.GetScreenBounds(rect);
+      if (not rect.IntersectPoint(state.X, state.Y)) then
+      begin
+        Desktop^.ActiveMenu^.Hide;
+        if (Desktop^.ActiveMenu^.Parent <> nil) and
+           (TypeOf(Desktop^.ActiveMenu^.Parent^) = TypeOf(TMenuItem)) then
+        begin
+          PMenuItem(Desktop^.ActiveMenu^.Parent)^.Pressed := false;
+          PMenuItem(Desktop^.ActiveMenu^.Parent)^.Active := false;
+          PMenuItem(Desktop^.ActiveMenu^.Parent)^.Draw;
+        end;
+        Desktop^.ActiveMenu := nil;
+      end;
+    end;
+    if intersects or Modal then
+    begin
+      Handled := true;
+      newState := state;
+      Dec(newState.X, rect.X);
+      Dec(newState.Y, rect.Y);
+      IsLeftMouseDown := true;
+      OldState := state;
+      MouseDown(newState);
+      if (OnMouseDown <> nil) then
+        TMouseEvent(OnMouseDown)(@self, newState);
+    end;
+  end;
+
+  if (bsRight in state.ButtonState) and (not (bsRight in oldState.ButtonState)) then
+  begin
+    if Intersects or Modal then
+    begin
+      Handled := true;
+      newState := state;
+      Dec(newState.X, rect.X);
+      Dec(newState.Y, rect.Y);
+      IsRightMouseDown := true;
+      OldState := state;
+      MouseDown(newState);
+      if (OnMouseDown <> nil) then
+        TMouseEvent(OnMouseDown)(@self, newState);
+    end;
+  end;
+
+  if (not (bsLeft in state.ButtonState)) and (bsLeft in oldState.ButtonState) then
+  begin
+    if Intersects or Modal or Moving or Manipulating then
+    begin
+      Handled := true;
+      newState := state;
+      Dec(newState.X, rect.X);
+      Dec(newState.Y, rect.Y);
+      OldState := state;
+      Include(newState.ButtonState, bsLeft);
+      if (IsLeftMouseDown) then
+      begin
+        MouseUp(newState);
+        MouseClick(newState);
+        if (OnMouseUp <> nil) then
+          TMouseEvent(OnMouseUp)(@Self, newState);
+        if (OnMouseClick <> nil) then
+          TMouseEvent(OnMouseClick)(@self, newState);
+      end;
+      IsLeftMouseDown := false;
+    end;
+  end;
+
+  if (not (bsRight in state.ButtonState)) and (bsRight in oldState.ButtonState) then
+  begin
+    if Intersects or Modal or Moving or Manipulating then
+    begin
+      Handled := true;
+      newState := state;
+      Dec(newState.X, rect.X);
+      Dec(newState.Y, rect.Y);
+      OldState := state;
+      Include(newState.ButtonState, bsRight);
+      if (IsRightMouseDown) then
+      begin
+        MouseUp(newState);
+        MouseClick(newState);
+        if (OnMouseUp <> nil) then
+          TMouseEvent(OnMouseUp)(@self, newState);
+        if (OnMouseClick <> nil) then
+          TMouseEvent(OnMouseClick)(@self, newState);
+      end;
+      IsRightMouseDown := false;
+    end;
+  end;
 end;
 
 procedure TControl.ProcessKeyPress(var key: word; var handled: boolean);
@@ -727,8 +881,7 @@ var
   result: string;
 begin
   result := '';
-  for index := 1 to Length(txt) do
-  begin
+  for index := 1 to Length(txt) do begin
     if (txt[index] <> '&') then result := result + txt[index];
   end;
   TrueText := result;
@@ -756,14 +909,14 @@ begin
   GetClipRect(clipRect);
   if (Focused and GetEnabled) then begin
     TextDriver.SetForeColor(BorderColor);
-    TextDriver.SetForeColor(FocusedBackColor);
+    TextDriver.SetBackColor(FocusedBackColor);
   end
   else begin
     TextDriver.SetForeColor(BorderColor);
     TextDriver.SetBackColor(BackColor);
   end;
   if (DrawBackground) then
-    TextDriver.FillRect(clipRect);
+   TextDriver.FillRect(clipRect);
   if (BorderStyle <> bsNone) then begin
     lineStyle := lsSingle;
     if (BorderStyle = bsDouble) then lineStyle := lsDouble;
@@ -785,13 +938,11 @@ begin
   isHotKey := false;
   while textIndex <= Length(Text) do
   begin
-    if (Text[index] = '&') then
-    begin
+    if (Text[index] = '&') then begin
       isHotKey := true;
       Inc(textIndex);
     end;
-    if (isHotKey) then
-    begin
+    if (isHotKey) then begin
       isHotKey := false;
       TextDriver.SetForeColor(HotKeyColor);
     end
@@ -872,18 +1023,15 @@ procedure TButton.Draw;
 begin
   if not GetVisible then exit;
   SetupControls;
-  if (Pressed or Active) then
-  begin
+  if (Pressed or Active) then begin
     TextDriver.SetForeColor(PressedForeColor);
     TextDriver.SetBackColor(PressedBackColor);
   end
-  else if (Focused) then
-  begin
+  else if (Focused) then begin
     TextDriver.SetForeColor(FocusedForeColor);
     TextDriver.SetBackColor(FocusedBackColor);
   end
-  else
-  begin
+  else begin
     TextDriver.SetForeColor(ForeColor);
     TextDriver.SetBackColor(BackColor);
   end;
@@ -917,8 +1065,7 @@ begin
   currentX := 0;
   SetBounds(0, 0, GetDesktop^.Width, 1);
   if Controls^.Count = 0 then exit;
-  for index := 0 to Controls^.Count - 1 do
-  begin
+  for index := 0 to Controls^.Count - 1 do begin
     control := PMenuItem(Controls^.GetItem(index));
     with control^ do
     begin
@@ -993,14 +1140,12 @@ begin
   borderWidth := 1;
   if (BorderStyle = bsNone) then
     borderWidth := 0;
-  if (Parent <> nil) and (TypeOf(Parent^) = TypeOf(TMenuItem)) then
-  begin
+  if (Parent <> nil) and (TypeOf(Parent^) = TypeOf(TMenuItem)) then begin
     X := Parent^.X;
     Y := Parent^.Y + 1;
   end;
   if (Controls^.Count = 0) then exit;
-  for index := 0 to Controls^.Count - 1 do
-  begin
+  for index := 0 to Controls^.Count - 1 do begin
     item := PMenuItem(Controls^.GetItem(index));
     hotKeyWidth := 0;
     if (item^.HotKey = 0) or (not item^.ShowHotKey) then
@@ -1010,8 +1155,7 @@ begin
   end;
   Width := maxWidth + 1 + 2 * borderWidth;
   Height := Controls^.Count + 2 * borderWidth;
-  for index := 0 to Controls^.Count - 1 do
-  begin
+  for index := 0 to Controls^.Count - 1 do begin
     item := PMenuItem(Controls^.GetItem(index));
     with item^ do
     begin
@@ -1049,8 +1193,7 @@ begin
   if (handled) then exit;
   if (desktop^.ActiveMenu = @self) then
   begin
-    if (ActiveItem <> nil) then
-    begin
+    if (ActiveItem <> nil) then begin
       if (key = kDown) or (key = kUp) then
       begin
         handled := true;
@@ -1058,14 +1201,12 @@ begin
         ActiveItem^.Pressed := false;
         ActiveItem^.Active := false;
         ActiveItem^.Draw;
-        if (key = kDown) then
-        begin
+        if (key = kDown) then begin
           Inc(index);
           if (index > Controls^.Count - 1) then
             index := 0;
           newItem := PMenuItem(Controls^.GetItem(index));
-          while (newItem^.Separator) and (index + 1 < Controls^.Count) do
-          begin
+          while (newItem^.Separator) and (index + 1 < Controls^.Count) do begin
             Inc(index);
             newItem := PMenuItem(Controls^.GetItem(index));
           end;
@@ -1076,8 +1217,7 @@ begin
           if (index < 0) then
             index := Controls^.Count - 1;
           newItem := PMenuItem(Controls^.GetItem(index));
-          while (newItem^.Separator) and (index - 1 >= 0) do
-          begin
+          while (newItem^.Separator) and (index - 1 >= 0) do begin
             Dec(index);
             newItem := PMenuItem(Controls^.GetItem(index));
           end;
@@ -1088,8 +1228,7 @@ begin
         newItem^.Draw;
       end
     end;
-    if (key = 27) then
-    begin
+    if (key = 27) then begin
       if (ParentItem = nil) then exit;
       ParentItem^.Pressed := false;
       ParentItem^.Active := false;
@@ -1184,10 +1323,8 @@ begin
     Menu^.KeyPress(key, handled);
   if (handled) then exit;
   FillChar(state, SizeOf(State), 0);
-  if (key = 13) and GetVisible and GetEnabled and Active then
-  begin
-    if (ParentMenu <> nil) then
-    begin
+  if (key = 13) and GetVisible and GetEnabled and Active then begin
+    if (ParentMenu <> nil) then begin
       ParentMenu^.ActiveItem^.Pressed := false;
       ParentMenu^.ActiveItem^.Active := false;
       handled := true;
@@ -1205,12 +1342,9 @@ begin
   if (Separator) then exit;
   GetStatusBar^.Text := ToolTip;
   GetStatusBar^.Draw;
-  if (Parent <> nil) then
-  begin
-    if (ParentMenu <> nil) then
-    begin
-      if (ParentMenu^.ActiveItem <> nil) and (ParentMenu^.ActiveItem^.Active) then
-      begin
+  if (Parent <> nil) then begin
+    if (ParentMenu <> nil) then begin
+      if (ParentMenu^.ActiveItem <> nil) and (ParentMenu^.ActiveItem^.Active) then begin
         ParentMenu^.ActiveItem^.Active := false;
         ParentMenu^.ActiveItem^.Pressed := false;
         ParentMenu^.ActiveItem^.Draw;
@@ -1239,19 +1373,16 @@ begin
   TControl.MouseDown(state);
   if (not GetEnabled) then exit;
   desktop := GetDesktop;
-  if (desktop^.ActiveMenu <> nil) and (desktop^.ActiveMenu <> ParentMenu) then
-  begin
+  if (desktop^.ActiveMenu <> nil) and (desktop^.ActiveMenu <> ParentMenu) then begin
     desktop^.ActiveMenu^.Hide;
     parentItem := PMenuItem(desktop^.ActiveMenu^.ParentItem);
-    if (parentItem <> nil) then
-    begin
+    if (parentItem <> nil) then begin
       parentItem^.Pressed := false;
       parentItem^.Active := false;
       parentItem^.Draw;
     end;
   end;
-  if (Menu <> nil) then
-  begin
+  if (Menu <> nil) then begin
     desktop^.ActiveMenu := Menu;
     Pressed := true;
     if (not Active) then
@@ -1278,8 +1409,7 @@ begin
     Pressed := false;
     Active := false;
     IsMouseOver := false;
-    if (ParentMenu^.ParentItem <> nil) then
-    begin
+    if (ParentMenu^.ParentItem <> nil) then begin
       menuItem := PMenuItem(ParentMenu^.ParentItem);
       menuItem^.Pressed := false;
       menuItem^.Active := false;
@@ -1307,18 +1437,15 @@ begin
   TextDriver.CursorOff;
   TextDriver.SetForeColor(ForeColor);
   TextDriver.SetBackColor(BackColor);
-  if Separator then
-  begin
+  if Separator then begin
     GetScreenBounds(rect);
     TextDriver.SetForeColor(BorderColor);
     TextDriver.HLine(rect.X, Rect.Y + (rect.Height div 2), rect.Width, lsSingle);
   end
   else
     TButton.Draw;
-  if (ShowHotKey and (HotKey <> 0)) then
-  begin
-    if (Pressed or Active) then
-    begin
+  if (ShowHotKey and (HotKey <> 0)) then begin
+    if (Pressed or Active) then begin
       TextDriver.SetForeColor(PressedForeColor);
       TextDriver.SetBackColor(PressedBackColor);
     end;
@@ -1341,13 +1468,11 @@ begin
   if not (GetVisible and GetEnabled) then exit;
   if CanFocus then
     Focus;
-  if Toggle and Grouped and (Parent <> nil) then
-  begin
+  if Toggle and Grouped and (Parent <> nil) then begin
     for index := 0 to Parent^.Controls^.Count - 1 do
     begin
       control := Parent^.Controls^.GetItem(index);
-      if (control^.Grouped) then
-      begin
+      if (control^.Grouped) then begin
         button := pointer(control);
         button^.Pressed := false;
         control^.Draw;
@@ -1360,8 +1485,7 @@ end;
 
 procedure TButton.MouseClick(var state: TMouseState);
 begin
-  if (not Toggle) then
-  begin
+  if (not Toggle) then begin
     Pressed := false;
     Draw;
   end;
@@ -1410,6 +1534,8 @@ begin
 end;
 
 procedure TDesktop.Init;
+var
+  newFont: PFont;
 begin
   TPanel.Init;
   TypeName := 'TDesktop';
@@ -1422,7 +1548,10 @@ begin
   BackColor := icDesktopBack;
   MenuBar := New(PMenuBar, CreateParent('DesktopMenuBar', @self));
   StatusBar := New(PStatusBar, CreateParent('DesktopStatusBar', @self));
-  OldMouseState.Create('');
+  OldMouseState.Create;
+  newFont := New(PSystemFont, Create('SystemFont'));
+  SetFont(newFont);
+  Graphics.Font := newFont;
 end;
 
 destructor TDesktop.Done;
