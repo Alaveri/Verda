@@ -404,6 +404,7 @@ begin
   AcceptTab := false;
   DrawEnabled := true;
   Manipulating := false;
+  ToolTip := '';
   _font := nil;
 end;
 

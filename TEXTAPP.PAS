@@ -168,7 +168,8 @@ begin
       Graphics.DrawImage(_oldMouseState.X, _oldMouseState.Y,
         _mouseCursor.Width, _mouseCursor.Height, _mouseCursor.BackData);
     end;
-    _oldMouseState.Assign(mouseState);
+    _oldMouseState.Create;
+    _oldMouseState := mouseState;
     Desktop^.ProcessMouse(mouseState, _oldMouseState, _mouseHandled);
     _mouseCursor.StoreBackground(mouseState);
     _mouseCursor.Draw;
@@ -182,7 +183,7 @@ var
 begin
   MouseDriver.GetMouseState(mouseState);
   _oldMouseState.Create;
-  _oldMouseState.Assign(mouseState);
+  _oldMouseState := mouseState;
   _mouseCursor._X := mouseState.X;
   _mouseCursor._Y := mouseState.Y;
   _mouseCursor.StoreBackground(mouseState);
