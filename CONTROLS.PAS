@@ -1,4 +1,4 @@
-{$I Compiler.inc}
+{$I COMPILER.INC}
 unit Controls;
 
 interface
@@ -1535,8 +1535,6 @@ begin
 end;
 
 procedure TDesktop.Init;
-var
-  newFont: PFont;
 begin
   TPanel.Init;
   TypeName := 'TDesktop';
@@ -1550,13 +1548,11 @@ begin
   MenuBar := New(PMenuBar, CreateParent('DesktopMenuBar', @self));
   StatusBar := New(PStatusBar, CreateParent('DesktopStatusBar', @self));
   OldMouseState.Create;
-  newFont := New(PSystemFont, Create('SystemFont'));
-  SetFont(newFont);
-  Graphics.Font := newFont;
 end;
 
 destructor TDesktop.Done;
 begin
+  TPanel.Done;
 end;
 
 procedure TDesktop.Draw;

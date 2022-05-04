@@ -1,4 +1,4 @@
-{$I Compiler.inc}
+{$I COMPILER.INC}
 unit TextApp;
 
 interface
@@ -14,6 +14,7 @@ uses
   Drawing,
   MouseDrv,
   GraphDrv,
+  MemDrv,
   KeyDrv,
   Utils;
 
@@ -56,6 +57,7 @@ type
     destructor Done; virtual;
     procedure ShowMouseCursor; virtual;
     procedure HideMouseCursor; virtual;
+    procedure InitMemory; virtual;
   end;
 
 implementation
@@ -117,6 +119,56 @@ begin
   end;
 end;
 
+procedure TTextApplication.InitMemory;
+{$IFDEF debug}
+var
+    filename: string;
+    debugFile: File;
+    xmsHandle: word;
+    xmsControl: pointer;
+{$ENDIF}
+begin
+    {$IFDEF debug}
+  { Deallocate the last used XMS handle if the program abnormally terminated}
+  filename := 'XmsDebug.bin';
+  if FileExists(FileName) then
+  begin
+    Assign(debugFile, filename);
+    Reset(debugFile, 1);
+    BlockRead(debugFile, xmsHandle, SizeOf(xmsHandle));
+    System.Close(debugFile);
+    asm
+      push es
+      mov  ax, 4310h
+      int  2Fh
+      mov  word ptr [xmsControl], bx
+      mov  word ptr [xmsControl + 2], es
+      pop  es
+    end;
+    asm
+      mov  ah, 0Ah
+      mov  dx, [xmsHandle]
+      call [XmsControl]
+    end;
+  end;
+  {$ENDIF}
+  Memory.Create(InterfaceMemory);
+  WriteLn('Memory manager initialized.');
+  if (Memory.XmsEnabled) then
+  begin
+    WriteLn
+    (
+      'XMS memory enabled.',
+      #10#13,
+      longint(Memory.LowerMemAvail),
+      ' bytes lower memory available.',
+      #10#13,
+      longint(Memory.XmsMemAvail),
+      ' bytes XMS memory available.'
+    );
+  end;
+end;
+
 procedure TTextApplication.Init;
 var
   mouseState: TMouseState;
@@ -125,6 +177,7 @@ begin
   TypeName := 'TTextApplication';
   _mouseHandled := false;
   _keyHandled := false;
+  InitDefaultColors;
   Desktop := New(PDesktop, CreateParent('Desktop', nil));
   Desktop^.MouseState.Visible := true;
   Desktop^.MouseStack.Create;
@@ -138,6 +191,7 @@ var
   factory: TTextDriverFactory;
   modeIndex: integer;
   mode: PTextMode;
+  newFont: PFont;
 begin
   factory.CreateTextDriver(driver, TextDriver);
   modeIndex := TextDriver.Modes.IndexOfId(modeId);
@@ -148,7 +202,9 @@ begin
   end;
   mode := TextDriver.Modes.GetItem(modeIndex);
   TextDriver.SetMode(mode^);
-  InitDefaultColors;
+  newFont := New(PSystemFont, Create('SystemFont'));
+  Desktop^.SetFont(newFont);
+  Graphics.Font := newFont;
 end;
 
 procedure TTextApplication.ProcessEvents;
@@ -216,10 +272,10 @@ end;
 
 destructor TTextApplication.Done;
 begin
-  TApplication.Done;
   Dispose(Desktop, Done);
   _mouseCursor.Done;
   TextDriver.Done;
+  TApplication.Done;
 end;
 
 procedure TMouseCursor.Init;
@@ -268,6 +324,7 @@ destructor TMouseCursor.Done;
 begin
   if (BackData <> nil) then
     FreeMem(BackData, _width * _height);
+  TBaseObject.Done;
 end;
 
 end.
