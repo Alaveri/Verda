@@ -58,6 +58,7 @@ type
     procedure ShowMouseCursor; virtual;
     procedure HideMouseCursor; virtual;
     procedure InitMemory; virtual;
+    procedure FreeMemory; virtual;
   end;
 
 implementation
@@ -152,21 +153,26 @@ begin
     end;
   end;
   {$ENDIF}
-  Memory.Create(InterfaceMemory);
+  Memory := New(PMemDrv, Create(InterfaceMemory));
   WriteLn('Memory manager initialized.');
-  if (Memory.XmsEnabled) then
+  if (Memory^.XmsEnabled) then
   begin
     WriteLn
     (
       'XMS memory enabled.',
       #10#13,
-      longint(Memory.LowerMemAvail),
+      longint(Memory^.LowerMemAvail),
       ' bytes lower memory available.',
       #10#13,
-      longint(Memory.XmsMemAvail),
+      longint(Memory^.XmsMemAvail),
       ' bytes XMS memory available.'
     );
   end;
+end;
+
+procedure TTextApplication.FreeMemory;
+begin
+  Dispose(Memory, Done);
 end;
 
 procedure TTextApplication.Init;
