@@ -446,11 +446,11 @@ begin
     exit;
   Focused := true;
   desktop^.ActiveControl := @self;
-  TextDriver.CursorOff;
+  TextDriver^.CursorOff;
   Draw;
-  TextDriver.SetXY(TextX, TextY);
+  TextDriver^.SetXY(TextX, TextY);
   if (UsesCursor) then
-    TextDriver.CursorOn;
+    TextDriver^.CursorOn;
 end;
 
 procedure TControl.Unfocus;
@@ -460,12 +460,12 @@ begin
   desktop := GetDesktop;
   if (not CanFocus) or (not Focused) then exit;
   Focused := false;
-  TextDriver.PushState;
-  TextDriver.CursorOff;
-  MouseDriver.PushState;
+  TextDriver^.PushState;
+  TextDriver^.CursorOff;
+  MouseDriver^.PushState;
   Draw;
-  MouseDriver.PopState;
-  TextDriver.PopState;
+  MouseDriver^.PopState;
+  TextDriver^.PopState;
   desktop^.ActiveControl := nil;
 end;
 
@@ -903,25 +903,25 @@ begin
   if not GetVisible then exit;
   desktop := GetDesktop;
   SetupControls;
-  TextDriver.PushState;
-  MouseDriver.PushState;
-  MouseDriver.HideMouse;
-  TextDriver.CursorOff;
+  TextDriver^.PushState;
+  MouseDriver^.PushState;
+  MouseDriver^.HideMouse;
+  TextDriver^.CursorOff;
   GetClipRect(clipRect);
   if (Focused and GetEnabled) then begin
-    TextDriver.SetForeColor(BorderColor);
-    TextDriver.SetBackColor(FocusedBackColor);
+    TextDriver^.SetForeColor(BorderColor);
+    TextDriver^.SetBackColor(FocusedBackColor);
   end
   else begin
-    TextDriver.SetForeColor(BorderColor);
-    TextDriver.SetBackColor(BackColor);
+    TextDriver^.SetForeColor(BorderColor);
+    TextDriver^.SetBackColor(BackColor);
   end;
   if (DrawBackground) then
-   TextDriver.FillRect(clipRect);
+   TextDriver^.FillRect(clipRect);
   if (BorderStyle <> bsNone) then begin
     lineStyle := lsSingle;
     if (BorderStyle = bsDouble) then lineStyle := lsDouble;
-    TextDriver.Box(clipRect, lineStyle);
+    TextDriver^.Box(clipRect, lineStyle);
   end;
   txt := TrueText(text);
   case TextAlign of
@@ -945,18 +945,18 @@ begin
     end;
     if (isHotKey) then begin
       isHotKey := false;
-      TextDriver.SetForeColor(HotKeyColor);
+      TextDriver^.SetForeColor(HotKeyColor);
     end
     else
-      TextDriver.SetForeColor(ForeColor);
+      TextDriver^.SetForeColor(ForeColor);
     ch := Text[textIndex];
-    TextDriver.SetXY(index + textXPos + Margin, textYPos);
-    TextDriver.Write(ch);
+    TextDriver^.SetXY(index + textXPos + Margin, textYPos);
+    TextDriver^.Write(ch);
     Inc(index);
     Inc(textIndex);
   end;
-  TextDriver.PopState;
-  MouseDriver.PopState;
+  TextDriver^.PopState;
+  MouseDriver^.PopState;
   DrawControls;
 end;
 
@@ -1025,16 +1025,16 @@ begin
   if not GetVisible then exit;
   SetupControls;
   if (Pressed or Active) then begin
-    TextDriver.SetForeColor(PressedForeColor);
-    TextDriver.SetBackColor(PressedBackColor);
+    TextDriver^.SetForeColor(PressedForeColor);
+    TextDriver^.SetBackColor(PressedBackColor);
   end
   else if (Focused) then begin
-    TextDriver.SetForeColor(FocusedForeColor);
-    TextDriver.SetBackColor(FocusedBackColor);
+    TextDriver^.SetForeColor(FocusedForeColor);
+    TextDriver^.SetBackColor(FocusedBackColor);
   end
   else begin
-    TextDriver.SetForeColor(ForeColor);
-    TextDriver.SetBackColor(BackColor);
+    TextDriver^.SetForeColor(ForeColor);
+    TextDriver^.SetBackColor(BackColor);
   end;
   TPanel.Draw;
 end;
@@ -1432,31 +1432,31 @@ var
 begin
   if (not GetVisible) then exit;
   SetupControls;
-  TextDriver.PushState;
-  MouseDriver.PushState;
-  MouseDriver.HideMouse;
-  TextDriver.CursorOff;
-  TextDriver.SetForeColor(ForeColor);
-  TextDriver.SetBackColor(BackColor);
+  TextDriver^.PushState;
+  MouseDriver^.PushState;
+  MouseDriver^.HideMouse;
+  TextDriver^.CursorOff;
+  TextDriver^.SetForeColor(ForeColor);
+  TextDriver^.SetBackColor(BackColor);
   if Separator then begin
     GetScreenBounds(rect);
-    TextDriver.SetForeColor(BorderColor);
-    TextDriver.HLine(rect.X, Rect.Y + (rect.Height div 2), rect.Width, lsSingle);
+    TextDriver^.SetForeColor(BorderColor);
+    TextDriver^.HLine(rect.X, Rect.Y + (rect.Height div 2), rect.Width, lsSingle);
   end
   else
     TButton.Draw;
   if (ShowHotKey and (HotKey <> 0)) then begin
     if (Pressed or Active) then begin
-      TextDriver.SetForeColor(PressedForeColor);
-      TextDriver.SetBackColor(PressedBackColor);
+      TextDriver^.SetForeColor(PressedForeColor);
+      TextDriver^.SetBackColor(PressedBackColor);
     end;
     GetClipRect(rect);
     desc := '';{GetKeyDesc(HotKey);}
-    TextDriver.SetXY(rect.X + rect.Width - Length(desc), rect.Y);
-    TextDriver.Write(desc);
+    TextDriver^.SetXY(rect.X + rect.Width - Length(desc), rect.Y);
+    TextDriver^.Write(desc);
   end;
-  MouseDriver.PopState;
-  TextDriver.PopState;
+  MouseDriver^.PopState;
+  TextDriver^.PopState;
 end;
 
 
@@ -1531,7 +1531,7 @@ end;
 
 procedure TDesktop.SetupControls;
 begin
-  SetBounds(0, 0, TextDriver.Mode.Width, TextDriver.Mode.Height);
+  SetBounds(0, 0, TextDriver^.Mode^.Width, TextDriver^.Mode^.Height);
 end;
 
 procedure TDesktop.Init;
@@ -1562,7 +1562,7 @@ end;
 
 procedure TDesktop.GetClientRect(var rect: TRect);
 begin
-  rect.Create(0, 0, TextDriver.Mode.Width, TextDriver.Mode.Height);
+  rect.Create(0, 0, TextDriver^.Mode^.Width, TextDriver^.Mode^.Height);
 end;
 
 function TDesktop.FindNextControl(control: PControl): PControl;
